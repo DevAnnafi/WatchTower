@@ -1,6 +1,6 @@
 # WatchTower
 
-[![CI](https://github.com/DevAnnafi/WatchTower/actions/workflows/ci.yml/badge.svg)](https://github.com/DevAnnafi/WatchTower/actions/workflows/ci.yml)
+[![CI](https://github.com/DevAnnafi/WatchTower/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/DevAnnafi/WatchTower/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/DevAnnafi/WatchTower)](https://github.com/DevAnnafi/WatchTower/releases)
 [![Python](https://img.shields.io/badge/python-3.10--3.14-blue)](https://www.python.org/)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
