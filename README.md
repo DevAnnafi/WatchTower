@@ -1,81 +1,162 @@
-# Watchtower
+# WatchTower
 
-Watchtower is a local-first Python CLI that monitors web pages and tells you when meaningful text changes. It supports whole-page monitoring, CSS selectors, readable diffs, SQLite history, scheduled checks, and terminal/Discord/Slack/Telegram/email notifications.
+[![CI](https://github.com/DevAnnafi/WatchTower/actions/workflows/ci.yml/badge.svg)](https://github.com/DevAnnafi/WatchTower/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/DevAnnafi/WatchTower)](https://github.com/DevAnnafi/WatchTower/releases)
+[![Python](https://img.shields.io/badge/python-3.10--3.14-blue)](https://www.python.org/)
+[![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
-## Why
+WatchTower is a local-first Python CLI that monitors public web pages and tells you when meaningful text changes. It supports whole-page monitoring, CSS selectors, readable diffs, SQLite history, scheduled checks, and terminal, Discord, Slack, Telegram, and SMTP email notifications.
 
-Use it for job pages, application deadlines, documentation, event pages, inventory pages, government notices, or any public page whose changes you do not want to check manually.
+## Why WatchTower?
 
-## Install
+Use it for job pages, application deadlines, documentation, event pages, inventory pages, government notices, release pages, or any public page you do not want to check manually.
+
+WatchTower keeps monitoring data local by default and reads notification credentials from environment variables rather than storing secrets in its database.
+
+## Features
+
+- Whole-page and CSS-selector monitoring
+- SHA-256 content fingerprints
+- Human-readable unified diffs
+- SQLite-backed version and change history
+- Configurable monitor intervals
+- Continuous scheduler
+- HTTP redirects, timeouts, and bounded retries
+- Terminal notifications
+- Discord webhooks
+- Slack webhooks
+- Telegram bot notifications
+- SMTP email notifications
+- Environment-variable secret management
+- Docker and Docker Compose support
+- GitHub Actions CI across Python 3.10-3.14
+
+## Architecture
+
+```text
+CLI / Scheduler
+      |
+      v
+   Fetcher -------- HTTP
+      |
+      v
+   Parser --------- CSS selector + text normalization
+      |
+      v
+ Change Engine ---- SHA-256 + unified diff
+      |
+      +-----------> SQLite versions/history
+      |
+      +-----------> Terminal / Discord / Slack / Telegram / Email
+```
+
+The modules are intentionally separated so additional fetchers or notification providers can be added without changing the core monitoring engine.
+
+## Installation
 
 Python 3.10+ is required.
 
 ```bash
+git clone https://github.com/DevAnnafi/WatchTower.git
+cd WatchTower
 python -m venv .venv
-# Windows: .venv\\Scripts\\activate
-# macOS/Linux: source .venv/bin/activate
-pip install -e .
-watchtower init
 ```
 
-For development:
+Activate the virtual environment.
+
+**Windows PowerShell**
+
+```powershell
+.\.venv\Scripts\Activate.ps1
+```
+
+**macOS/Linux**
 
 ```bash
-pip install -e '.[dev]'
-pytest
-ruff check src tests
+source .venv/bin/activate
+```
+
+Install WatchTower and initialize it:
+
+```bash
+python -m pip install -e .
+watchtower init
 ```
 
 ## Quick start
 
+Add a monitor:
+
 ```bash
-watchtower add https://example.com --name Example --interval 30
-watchtower check 1       # first check creates the baseline
-watchtower list
-watchtower check 1       # later checks compare against the baseline
+watchtower add https://example.com --name "Example" --interval 30
+```
+
+Run the first check. The first successful check creates a baseline and does not send a change notification.
+
+```bash
+watchtower check 1
+```
+
+Later checks compare the current page against the latest stored version:
+
+```bash
+watchtower check 1
 watchtower history 1
 watchtower diff CHANGE_ID
-watchtower run           # continuously check due monitors
 ```
 
-Monitor one part of a page:
+Run WatchTower continuously:
 
 ```bash
-watchtower add https://example.com/jobs --name Jobs --selector '.jobs-list' --interval 15
+watchtower run
 ```
 
-Other commands:
+## CSS selector monitoring
+
+Monitor only one part of a page:
 
 ```bash
-watchtower disable 1
-watchtower enable 1
-watchtower remove 1
+watchtower add https://example.com/jobs \
+  --name "Jobs" \
+  --selector ".jobs-list" \
+  --interval 15
+```
+
+Selectors are useful when navigation, timestamps, advertisements, or unrelated page content change frequently.
+
+## CLI commands
+
+```text
+watchtower init
+watchtower add URL [--name NAME] [--selector SELECTOR] [--interval MINUTES]
+watchtower list
+watchtower check [MONITOR_ID]
+watchtower history MONITOR_ID
+watchtower diff CHANGE_ID
+watchtower enable MONITOR_ID
+watchtower disable MONITOR_ID
+watchtower remove MONITOR_ID
+watchtower run
 watchtower test-notification
 ```
 
-## How it works
-
-1. Fetch the page with redirects enabled and bounded retries.
-2. Remove scripts/styles and normalize visible text.
-3. Optionally restrict extraction to a CSS selector.
-4. SHA-256 the normalized text.
-5. Compare it with the latest stored version.
-6. On change, create a unified diff, store history, and notify configured channels.
-
-The first successful check is a baseline and does not trigger a change notification.
-
 ## Data and configuration
 
-By default Watchtower stores its files in `~/.watchtower/`:
+By default, WatchTower stores runtime files under `~/.watchtower/`:
 
-- `config.yml` — non-secret configuration
-- `watchtower.db` — monitors, versions, and change history
+```text
+~/.watchtower/
+├── config.yml
+└── watchtower.db
+```
 
-Set `WATCHTOWER_HOME` to use a different directory.
+Set `WATCHTOWER_HOME` to use another directory.
+
+A complete non-secret configuration example is available at `examples/config.yml`.
 
 ## Discord
 
-Edit `~/.watchtower/config.yml`:
+Enable Discord in `~/.watchtower/config.yml`:
 
 ```yaml
 notifications:
@@ -84,21 +165,38 @@ notifications:
     webhook_env: WATCHTOWER_DISCORD_WEBHOOK
 ```
 
-Then set the secret in your shell rather than putting it in YAML:
+Then set the webhook in your shell instead of placing it in YAML.
 
-```bash
-export WATCHTOWER_DISCORD_WEBHOOK='your-webhook-value'
-```
-
-PowerShell:
+**PowerShell**
 
 ```powershell
-$env:WATCHTOWER_DISCORD_WEBHOOK='your-webhook-value'
+$env:WATCHTOWER_DISCORD_WEBHOOK="your-webhook-value"
+```
+
+**macOS/Linux**
+
+```bash
+export WATCHTOWER_DISCORD_WEBHOOK="your-webhook-value"
+```
+
+Test the configured notification providers:
+
+```bash
+watchtower test-notification
 ```
 
 ## Slack and Telegram
 
-Slack uses `WATCHTOWER_SLACK_WEBHOOK`. Telegram uses `WATCHTOWER_TELEGRAM_BOT_TOKEN` and `WATCHTOWER_TELEGRAM_CHAT_ID`. Enable the matching provider in `config.yml`; keep the actual secrets in environment variables.
+Slack reads `WATCHTOWER_SLACK_WEBHOOK`.
+
+Telegram reads:
+
+```text
+WATCHTOWER_TELEGRAM_BOT_TOKEN
+WATCHTOWER_TELEGRAM_CHAT_ID
+```
+
+Enable the matching provider in `config.yml` and keep the actual credentials in environment variables.
 
 ## Email
 
@@ -113,56 +211,72 @@ WATCHTOWER_EMAIL_FROM
 WATCHTOWER_EMAIL_TO
 ```
 
-Credentials are deliberately read from environment variables and should never be committed.
+## Docker
+
+Build and run directly:
+
+```bash
+docker build -t watchtower .
+docker run --rm -v watchtower-data:/data watchtower
+```
+
+Or use Docker Compose:
+
+```bash
+docker compose up -d
+```
+
+Runtime data is stored in the `/data` volume. Notification secrets can be supplied through a local `.env` file, which is ignored by Git.
 
 ## Scheduling
 
-`watchtower run` stays active and checks each enabled monitor when its configured interval is due. For always-on use, run it under your operating system's process manager, Task Scheduler, cron, systemd, Docker, or another supervised environment.
+`watchtower run` remains active and scans enabled monitors every configured scheduler polling interval. A monitor is fetched only when its own interval is due.
+
+For always-on use, run WatchTower under Task Scheduler, cron, systemd, Docker, or another supervised process environment.
 
 ## Dynamic sites and limitations
 
-Watchtower fetches server-returned HTML. Pages whose important content exists only after JavaScript execution may require a browser-based renderer; that is intentionally not bundled because it greatly increases installation size and attack surface. CSS selectors are recommended for pages with frequently changing navigation, timestamps, ads, or unrelated content.
+WatchTower fetches server-returned HTML. Content rendered only after JavaScript executes may require a browser-based renderer, which is intentionally not bundled into the current release.
 
-Respect site terms, robots guidance where applicable, authentication boundaries, and reasonable request intervals. Watchtower is not intended to bypass access controls, CAPTCHAs, or anti-bot systems.
+WatchTower is designed for public pages. It is not intended to bypass authentication, CAPTCHAs, access controls, rate limits, or anti-bot protections. Use reasonable request intervals and respect applicable site terms and policies.
 
-## Architecture
+## Development
 
-```text
-CLI / Scheduler
-      |
-      v
-   Fetcher ---- HTTP
-      |
-      v
-   Parser ---- CSS selector + normalization
-      |
-      v
- Change Engine ---- SHA-256 + unified diff
-      |
-      +---- SQLite versions/history
-      |
-      +---- Terminal / Discord / Slack / Telegram / Email
-```
-
-The modules are intentionally separated so additional fetchers or notification providers can be added without changing the monitoring engine.
-
-## Testing
+Install development dependencies:
 
 ```bash
-pytest --cov=watchtower
-ruff check src tests
+python -m pip install -e ".[dev]"
 ```
 
-GitHub Actions runs linting and tests on supported Python versions.
+Run the quality gate:
+
+```bash
+python -m ruff check src tests
+python -m pytest
+python -m pytest --cov=watchtower --cov-report=term-missing
+```
+
+The v1.0.1 release was manually validated on Windows with Python 3.14.7, including end-to-end page-change detection, SQLite history/diffs, scheduler startup, and Discord webhook delivery.
 
 ## Security
 
-- Notification secrets are environment variables, not database fields.
-- No arbitrary page JavaScript is executed.
-- Requests have timeouts and bounded retries.
-- HTML is treated as data and converted to text.
-- The SQLite database remains local unless you deliberately sync it elsewhere.
+- Notification credentials are read from environment variables.
+- `.env`, `.venv`, runtime data, caches, coverage files, and build artifacts are ignored by Git.
+- HTML is treated as data; WatchTower does not execute page JavaScript.
+- HTTP requests use timeouts and bounded retries.
+- SQLite connections are explicitly committed/rolled back and closed.
+- Runtime data remains local unless you deliberately sync or mount it elsewhere.
+
+See [SECURITY.md](SECURITY.md) for vulnerability reporting guidance.
+
+## Roadmap
+
+Potential post-v1 improvements are tracked separately from the stable v1.0.1 release. Good candidates include higher automated coverage, browser-rendered pages, richer notification formatting, and additional scheduling/deployment options.
+
+## Contributing
+
+Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 
-MIT. See `LICENSE`.
+MIT. See [LICENSE](LICENSE).
