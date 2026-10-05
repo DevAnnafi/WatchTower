@@ -7,7 +7,7 @@ notifications:
   terminal:
     enabled: true
   discord:
-    enabled: false
+    enabled: true
     webhook_env: WATCHTOWER_DISCORD_WEBHOOK
   slack:
     enabled: false

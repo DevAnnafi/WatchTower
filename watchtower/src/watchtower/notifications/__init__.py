@@ -1,5 +1,6 @@
+from . import discord, email, slack, telegram, terminal
 from .base import Notification
-from . import terminal, discord, email, slack, telegram
+
 
 def notify(n: Notification, cfg: dict):
     nc = cfg.get("notifications", {})
@@ -14,5 +15,5 @@ def notify(n: Notification, cfg: dict):
     for name, pcfg, sender in providers:
         if pcfg.get("enabled"):
             try: sender(pcfg)
-            except Exception as e: errors.append(f"{name}: {e}")
-    return errors
+            except Exception as exc:  # noqa: BLE001 - one provider failure must not block others
+    	        errors.append(f"{name}: {exc}")

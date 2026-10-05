@@ -1,4 +1,5 @@
-from watchtower.differ import digest, unified, summary
+from watchtower.differ import digest, summary, unified
+
 
 def test_digest_stable(): assert digest("x") == digest("x")
 def test_diff():

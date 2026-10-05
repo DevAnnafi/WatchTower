@@ -1,12 +1,15 @@
 from __future__ import annotations
+
 from datetime import datetime, timezone
+
 from . import db
 from .config import load_config
+from .differ import digest, summary, unified
 from .fetcher import fetch
-from .parser import extract_text
-from .differ import digest, unified, summary
 from .models import CheckResult
 from .notifications import Notification, notify
+from .parser import extract_text
+
 
 def check_monitor(mid: int, send_notifications: bool = True) -> CheckResult:
     m = db.get_monitor(mid)

@@ -1,5 +1,7 @@
 import pytest
+
 from watchtower.parser import extract_text
+
 
 def test_extract_removes_scripts():
     assert extract_text("<h1>Hello</h1><script>bad()</script>") == "Hello"

@@ -1,6 +1,9 @@
 import os
+
 import httpx
+
 from .base import Notification
+
 
 def send(n: Notification, token_env="WATCHTOWER_TELEGRAM_BOT_TOKEN", chat_env="WATCHTOWER_TELEGRAM_CHAT_ID"):
     token = os.getenv(token_env); chat_id = os.getenv(chat_env)

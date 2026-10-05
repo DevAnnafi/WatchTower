@@ -1,6 +1,9 @@
 import os
+
 import httpx
+
 from .base import Notification
+
 
 def send(n: Notification, webhook_env="WATCHTOWER_SLACK_WEBHOOK"):
     url = os.getenv(webhook_env)

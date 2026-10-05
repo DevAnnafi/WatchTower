@@ -1,12 +1,14 @@
 from __future__ import annotations
+
 import typer
 from rich.console import Console
 from rich.table import Table
+
 from . import db
 from .config import CONFIG_PATH, DB_PATH, load_config
 from .monitor import check_monitor
-from .scheduler import run_forever
 from .notifications import Notification, notify
+from .scheduler import run_forever
 
 app = typer.Typer(help="Watchtower — monitor websites and get notified when they change.", no_args_is_help=True)
 console = Console()
@@ -47,7 +49,8 @@ def check(mid: int = typer.Argument(None)):
         try:
             r = check_monitor(m.id)
             console.print(f"#{m.id} {m.name}: " + ("[yellow]CHANGED[/yellow]" if r.changed else "[green]unchanged/baselined[/green]"))
-        except Exception as exc: console.print(f"[red]#{m.id} {m.name}: {exc}[/red]")
+        except Exception as exc:  # noqa: BLE001 - CLI boundary must report individual monitor failures
+    	    console.print(f"[red]#{m.id} {m.name}: {exc}[/red]")
 
 @app.command("history")
 def history(mid: int, limit: int = 20):
