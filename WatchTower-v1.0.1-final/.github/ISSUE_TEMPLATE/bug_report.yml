@@ -1,0 +1,48 @@
+name: Bug report
+description: Report reproducible incorrect behavior in WatchTower
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: Thanks for helping improve WatchTower. Do not include secrets or webhook URLs.
+  - type: input
+    id: version
+    attributes:
+      label: WatchTower version
+      placeholder: v1.0.1
+    validations:
+      required: true
+  - type: input
+    id: python
+    attributes:
+      label: Python version
+      placeholder: 3.14.7
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: Operating system
+      placeholder: Windows 11 / macOS / Ubuntu
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Reproduction steps
+      description: Provide the smallest sequence that reproduces the problem.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
