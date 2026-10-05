@@ -1,0 +1,10 @@
+services:
+  watchtower:
+    build: .
+    restart: unless-stopped
+    volumes:
+      - watchtower-data:/data
+    env_file:
+      - .env
+volumes:
+  watchtower-data:
