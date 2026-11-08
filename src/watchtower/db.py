@@ -44,7 +44,6 @@ CREATE INDEX IF NOT EXISTS idx_versions_monitor ON versions(monitor_id, id DESC)
 CREATE INDEX IF NOT EXISTS idx_changes_monitor ON changes(monitor_id, id DESC);
 """
 
-
 def migrate_schema(conn: sqlite3.Connection) -> None:
     """Add monitoring state columns to existing databases."""
 
@@ -59,22 +58,25 @@ def migrate_schema(conn: sqlite3.Connection) -> None:
         "last_successful": "TEXT",
     }
 
+    needs_backfill = "last_successful" not in columns
+
     for column, definition in migrations.items():
         if column not in columns:
             conn.execute(
                 f"ALTER TABLE monitors ADD COLUMN {column} {definition}"
             )
 
-    # Preserve timestamps from existing successful checks.
-    conn.execute(
-        """
-        UPDATE monitors
-        SET last_successful = last_checked
-        WHERE last_successful IS NULL
-          AND last_checked IS NOT NULL
-          AND status = 'SUCCESS'
-        """
-    )
+    if needs_backfill:
+        conn.execute(
+            """
+            UPDATE monitors
+            SET last_successful = last_checked
+            WHERE last_successful IS NULL
+              AND last_checked IS NOT NULL
+              AND status = 'SUCCESS'
+            """
+        )
+
 
 
 @contextmanager
