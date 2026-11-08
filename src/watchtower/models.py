@@ -13,6 +13,9 @@ class Monitor:
     last_checked: str | None
     last_changed: str | None
     last_hash: str | None
+    status: str = "SUCCESS"
+    last_attempted: str | None = None
+    last_successful: str | None = None
 
 
 @dataclass(slots=True)

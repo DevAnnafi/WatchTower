@@ -11,7 +11,7 @@ from .notifications import Notification, notify
 from .scheduler import run_forever
 
 app = typer.Typer(
-    help="Watchtower — monitor websites and get notified when they change.",
+    help="Watchtower - monitor websites and get notified when they change.",
     no_args_is_help=True,
 )
 console = Console()
@@ -22,7 +22,11 @@ def init():
     load_config()
     with db.connect():
         pass
-    console.print(f"Initialized Watchtower\nConfig: {CONFIG_PATH}\nDatabase: {DB_PATH}")
+    console.print(
+        f"Initialized Watchtower\n"
+        f"Config: {CONFIG_PATH}\n"
+        f"Database: {DB_PATH}"
+    )
 
 
 @app.command("add")
@@ -38,17 +42,40 @@ def add(
 
 @app.command("list")
 def ls():
-    table = Table("ID", "Name", "URL", "Selector", "Every", "Enabled", "Last changed")
+    table = Table(
+        "ID",
+        "Name",
+        "URL",
+        "Selector",
+        "Every",
+        "Enabled",
+        "Status",
+        "Last successful",
+        "Last changed",
+    )
+
     for m in db.list_monitors():
+        if m.status == "TARGET_NOT_FOUND":
+            status = "[yellow]TARGET_NOT_FOUND[/yellow]"
+        elif m.status == "FETCH_ERROR":
+            status = "[red]FETCH_ERROR[/red]"
+        elif m.last_successful is None:
+            status = "[dim]NOT_CHECKED[/dim]"
+        else:
+            status = "[green]SUCCESS[/green]"
+
         table.add_row(
             str(m.id),
             m.name,
             m.url,
-            m.selector or "—",
+            m.selector or "-",
             f"{m.interval_minutes}m",
             "yes" if m.enabled else "no",
-            m.last_changed or "—",
+            status,
+            m.last_successful or "-",
+            m.last_changed or "-",
         )
+
     console.print(table)
 
 
@@ -75,43 +102,82 @@ def disable(mid: int):
 def check(mid: int = typer.Argument(None)):
     monitors = [db.get_monitor(mid)] if mid else db.list_monitors()
     monitors = [m for m in monitors if m]
+
     if not monitors:
         console.print("No monitors found.")
         raise typer.Exit()
 
+    had_failure = False
+
     for m in monitors:
         try:
             result = check_monitor(m.id)
-            status = (
-                "[yellow]CHANGED[/yellow]"
-                if result.changed
-                else "[green]unchanged/baselined[/green]"
+
+            if result.monitor.status == "TARGET_NOT_FOUND":
+                had_failure = True
+                console.print(
+                    f"[yellow]#{m.id} {m.name}: TARGET_NOT_FOUND[/yellow]"
+                )
+                console.print(
+                    f"  Selector: {result.monitor.selector}"
+                )
+                console.print(
+                    "  Last successful check: "
+                    f"{result.monitor.last_successful or 'Never'}"
+                )
+                console.print(
+                    "  Previous snapshot preserved."
+                )
+
+            elif result.changed:
+                console.print(
+                    f"#{m.id} {m.name}: [yellow]CHANGED[/yellow]"
+                )
+
+            else:
+                console.print(
+                    f"#{m.id} {m.name}: "
+                    "[green]unchanged/baselined[/green]"
+                )
+
+        except Exception as exc:  # noqa: BLE001
+            had_failure = True
+            console.print(
+                f"[red]#{m.id} {m.name}: {exc}[/red]"
             )
-            console.print(f"#{m.id} {m.name}: {status}")
-        except Exception as exc:  # noqa: BLE001 - CLI boundary reports individual failures
-            console.print(f"[red]#{m.id} {m.name}: {exc}[/red]")
+
+    if had_failure:
+        raise typer.Exit(code=1)
 
 
 @app.command("history")
 def history(mid: int, limit: int = 20):
     rows = db.history(mid, limit)
     table = Table("Change ID", "Detected")
+
     for row in rows:
-        table.add_row(str(row["id"]), row["detected_at"])
+        table.add_row(
+            str(row["id"]),
+            row["detected_at"],
+        )
+
     console.print(table)
 
 
 @app.command("diff")
 def diff(change_id: int):
     row = db.get_change(change_id)
+
     if not row:
         raise typer.BadParameter("Change not found")
+
     console.print(row["diff"])
 
 
 @app.command("run")
 def run():
     console.print("Watchtower scheduler running. Press Ctrl+C to stop.")
+
     try:
         run_forever()
     except KeyboardInterrupt:
@@ -128,6 +194,7 @@ def test_notification():
         ),
         load_config(),
     )
+
     for error in errors:
         console.print(f"[red]{error}[/red]")
 

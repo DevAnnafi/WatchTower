@@ -18,6 +18,9 @@ CREATE TABLE IF NOT EXISTS monitors (
  last_checked TEXT,
  last_changed TEXT,
  last_hash TEXT,
+ status TEXT NOT NULL DEFAULT 'SUCCESS',
+ last_attempted TEXT,
+ last_successful TEXT,
  created_at TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS versions (
@@ -41,6 +44,40 @@ CREATE INDEX IF NOT EXISTS idx_versions_monitor ON versions(monitor_id, id DESC)
 CREATE INDEX IF NOT EXISTS idx_changes_monitor ON changes(monitor_id, id DESC);
 """
 
+def migrate_schema(conn: sqlite3.Connection) -> None:
+    """Add monitoring state columns to existing databases."""
+
+    columns = {
+        row["name"]
+        for row in conn.execute("PRAGMA table_info(monitors)")
+    }
+
+    migrations = {
+        "status": "TEXT NOT NULL DEFAULT 'SUCCESS'",
+        "last_attempted": "TEXT",
+        "last_successful": "TEXT",
+    }
+
+    needs_backfill = "last_successful" not in columns
+
+    for column, definition in migrations.items():
+        if column not in columns:
+            conn.execute(
+                f"ALTER TABLE monitors ADD COLUMN {column} {definition}"
+            )
+
+    if needs_backfill:
+        conn.execute(
+            """
+            UPDATE monitors
+            SET last_successful = last_checked
+            WHERE last_successful IS NULL
+              AND last_checked IS NOT NULL
+              AND status = 'SUCCESS'
+            """
+        )
+
+
 
 @contextmanager
 def connect():
@@ -51,11 +88,15 @@ def connect():
     try:
         conn.execute("PRAGMA foreign_keys=ON")
         conn.executescript(SCHEMA)
+        migrate_schema(conn)
+
         yield conn
         conn.commit()
+
     except Exception:
         conn.rollback()
         raise
+
     finally:
         conn.close()
 
@@ -71,15 +112,21 @@ def _monitor(row) -> Monitor:
         row["last_checked"],
         row["last_changed"],
         row["last_hash"],
+        row["status"],
+        row["last_attempted"],
+        row["last_successful"],
     )
 
 
 def add_monitor(name, url, selector=None, interval_minutes=60):
     now = datetime.now(timezone.utc).isoformat()
+
     with connect() as c:
         cur = c.execute(
             """
-            INSERT INTO monitors(name, url, selector, interval_minutes, created_at)
+            INSERT INTO monitors(
+                name, url, selector, interval_minutes, created_at
+            )
             VALUES(?,?,?,?,?)
             """,
             (name, url, selector, interval_minutes, now),
@@ -89,29 +136,52 @@ def add_monitor(name, url, selector=None, interval_minutes=60):
 
 def list_monitors():
     with connect() as c:
-        return [_monitor(r) for r in c.execute("SELECT * FROM monitors ORDER BY id")]
+        return [
+            _monitor(r)
+            for r in c.execute(
+                "SELECT * FROM monitors ORDER BY id"
+            )
+        ]
 
 
 def get_monitor(mid):
     with connect() as c:
-        row = c.execute("SELECT * FROM monitors WHERE id=?", (mid,)).fetchone()
+        row = c.execute(
+            "SELECT * FROM monitors WHERE id=?",
+            (mid,),
+        ).fetchone()
+
         return _monitor(row) if row else None
 
 
 def remove_monitor(mid):
     with connect() as c:
-        return c.execute("DELETE FROM monitors WHERE id=?", (mid,)).rowcount > 0
+        return (
+            c.execute(
+                "DELETE FROM monitors WHERE id=?",
+                (mid,),
+            ).rowcount > 0
+        )
 
 
 def set_enabled(mid, enabled):
     with connect() as c:
-        c.execute("UPDATE monitors SET enabled=? WHERE id=?", (int(enabled), mid))
+        c.execute(
+            "UPDATE monitors SET enabled=? WHERE id=?",
+            (int(enabled), mid),
+        )
 
 
 def latest_version(mid):
     with connect() as c:
         return c.execute(
-            "SELECT * FROM versions WHERE monitor_id=? ORDER BY id DESC LIMIT 1",
+            """
+            SELECT *
+            FROM versions
+            WHERE monitor_id=?
+            ORDER BY id DESC
+            LIMIT 1
+            """,
             (mid,),
         ).fetchone()
 
@@ -120,7 +190,9 @@ def save_version(mid, content, content_hash, captured_at):
     with connect() as c:
         c.execute(
             """
-            INSERT INTO versions(monitor_id, content, content_hash, captured_at)
+            INSERT INTO versions(
+                monitor_id, content, content_hash, captured_at
+            )
             VALUES(?,?,?,?)
             """,
             (mid, content, content_hash, captured_at),
@@ -131,7 +203,9 @@ def save_change(mid, old_hash, new_hash, diff, detected_at):
     with connect() as c:
         c.execute(
             """
-            INSERT INTO changes(monitor_id, old_hash, new_hash, diff, detected_at)
+            INSERT INTO changes(
+                monitor_id, old_hash, new_hash, diff, detected_at
+            )
             VALUES(?,?,?,?,?)
             """,
             (mid, old_hash, new_hash, diff, detected_at),
@@ -139,35 +213,90 @@ def save_change(mid, old_hash, new_hash, diff, detected_at):
 
 
 def update_check(mid, checked_at, content_hash, changed=False):
+    """Record a successful monitoring check."""
+
     with connect() as c:
         if changed:
             c.execute(
                 """
                 UPDATE monitors
-                SET last_checked=?, last_changed=?, last_hash=?
+                SET last_checked=?,
+                    last_changed=?,
+                    last_hash=?,
+                    status='SUCCESS',
+                    last_attempted=?,
+                    last_successful=?
                 WHERE id=?
                 """,
-                (checked_at, checked_at, content_hash, mid),
+                (
+                    checked_at,
+                    checked_at,
+                    content_hash,
+                    checked_at,
+                    checked_at,
+                    mid,
+                ),
             )
         else:
             c.execute(
                 """
                 UPDATE monitors
-                SET last_checked=?, last_hash=?
+                SET last_checked=?,
+                    last_hash=?,
+                    status='SUCCESS',
+                    last_attempted=?,
+                    last_successful=?
                 WHERE id=?
                 """,
-                (checked_at, content_hash, mid),
+                (
+                    checked_at,
+                    content_hash,
+                    checked_at,
+                    checked_at,
+                    mid,
+                ),
             )
+
+
+
+def update_check_failure(mid, attempted_at, status):
+    """Record a failed check without modifying the baseline."""
+
+    allowed_statuses = {"TARGET_NOT_FOUND", "FETCH_ERROR"}
+
+    if status not in allowed_statuses:
+        raise ValueError(f"Unsupported failure status: {status}")
+
+    with connect() as c:
+        c.execute(
+            """
+            UPDATE monitors
+            SET status=?,
+                last_attempted=?
+            WHERE id=?
+            """,
+            (status, attempted_at, mid),
+        )
+
 
 
 def history(mid, limit=20):
     with connect() as c:
         return c.execute(
-            "SELECT * FROM changes WHERE monitor_id=? ORDER BY id DESC LIMIT ?",
+            """
+            SELECT *
+            FROM changes
+            WHERE monitor_id=?
+            ORDER BY id DESC
+            LIMIT ?
+            """,
             (mid, limit),
         ).fetchall()
 
 
 def get_change(change_id):
     with connect() as c:
-        return c.execute("SELECT * FROM changes WHERE id=?", (change_id,)).fetchone()
+        return c.execute(
+            "SELECT * FROM changes WHERE id=?",
+            (change_id,),
+        ).fetchone()
