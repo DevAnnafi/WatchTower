@@ -57,6 +57,8 @@ def ls():
     for m in db.list_monitors():
         if m.status == "TARGET_NOT_FOUND":
             status = "[yellow]TARGET_NOT_FOUND[/yellow]"
+        elif m.status == "FETCH_ERROR":
+            status = "[red]FETCH_ERROR[/red]"
         elif m.last_successful is None:
             status = "[dim]NOT_CHECKED[/dim]"
         else:

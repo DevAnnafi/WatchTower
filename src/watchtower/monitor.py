@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from . import db
 from .config import load_config
 from .differ import digest, summary, unified
-from .fetcher import fetch
+from .fetcher import FetchError, fetch
 from .models import CheckResult
 from .notifications import Notification, notify
 from .parser import extract_text
@@ -19,11 +19,22 @@ def check_monitor(mid: int, send_notifications: bool = True) -> CheckResult:
     cfg = load_config()
     request_cfg = cfg["request"]
 
-    html = fetch(
-        monitor.url,
-        request_cfg.get("timeout_seconds", 15),
-        request_cfg.get("user_agent", "Watchtower/1.0"),
-    )
+    try:
+        html = fetch(
+            monitor.url,
+            request_cfg.get("timeout_seconds", 15),
+            request_cfg.get("user_agent", "Watchtower/1.0"),
+        )
+    except FetchError:
+        attempted_at = datetime.now(timezone.utc).isoformat()
+
+        db.update_check_failure(
+            mid,
+            attempted_at,
+            "FETCH_ERROR",
+        )
+
+        raise
 
     now = datetime.now(timezone.utc)
 
@@ -33,10 +44,7 @@ def check_monitor(mid: int, send_notifications: bool = True) -> CheckResult:
     except ValueError as exc:
         # Only handle the known missing-selector condition.
         # Other parser errors should remain visible.
-        if not (
-            monitor.selector
-            and str(exc).startswith("CSS selector matched no elements:")
-        ):
+        if not (monitor.selector and str(exc).startswith("CSS selector matched no elements:")):
             raise
 
         db.update_check_failure(

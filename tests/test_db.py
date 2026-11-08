@@ -214,3 +214,38 @@ def test_migration_preserves_existing_history(tmp_path, monkeypatch):
     assert db.latest_version(1)["content"] == "$79"
     assert len(db.history(1)) == 1
 
+
+def test_fetch_error_preserves_baseline(tmp_path, monkeypatch):
+    monkeypatch.setenv("WATCHTOWER_HOME", str(tmp_path))
+
+    from watchtower import config, db
+
+    importlib.reload(config)
+    importlib.reload(db)
+
+    mid = db.add_monitor(
+        "Example",
+        "https://example.com",
+        ".price",
+        60,
+    )
+
+    successful_at = "2026-11-01T12:00:00+00:00"
+    failed_at = "2026-11-01T12:30:00+00:00"
+
+    db.save_version(mid, "$99", "original-hash", successful_at)
+    db.update_check(mid, successful_at, "original-hash")
+
+    db.update_check_failure(mid, failed_at, "FETCH_ERROR")
+
+    monitor = db.get_monitor(mid)
+    latest = db.latest_version(mid)
+
+    assert monitor.status == "FETCH_ERROR"
+    assert monitor.last_attempted == failed_at
+    assert monitor.last_successful == successful_at
+    assert monitor.last_hash == "original-hash"
+    assert monitor.last_checked == successful_at
+
+    assert latest["content"] == "$99"
+    assert latest["content_hash"] == "original-hash"

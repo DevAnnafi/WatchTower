@@ -256,10 +256,13 @@ def update_check(mid, checked_at, content_hash, changed=False):
             )
 
 
+
 def update_check_failure(mid, attempted_at, status):
     """Record a failed check without modifying the baseline."""
 
-    if status != "TARGET_NOT_FOUND":
+    allowed_statuses = {"TARGET_NOT_FOUND", "FETCH_ERROR"}
+
+    if status not in allowed_statuses:
         raise ValueError(f"Unsupported failure status: {status}")
 
     with connect() as c:
@@ -272,6 +275,7 @@ def update_check_failure(mid, attempted_at, status):
             """,
             (status, attempted_at, mid),
         )
+
 
 
 def history(mid, limit=20):
