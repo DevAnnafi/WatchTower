@@ -9,10 +9,18 @@ from .monitor import check_monitor
 
 
 def _due(m, now):
-    if not m.last_checked:
+    """Determine whether a monitor is due for another attempt."""
+
+    last_attempt = m.last_attempted or m.last_checked
+
+    if not last_attempt:
         return True
-    last = datetime.fromisoformat(m.last_checked)
-    return (now - last).total_seconds() >= m.interval_minutes * 60
+
+    last = datetime.fromisoformat(last_attempt)
+
+    return (
+        now - last
+    ).total_seconds() >= m.interval_minutes * 60
 
 
 def run_forever():
@@ -21,10 +29,22 @@ def run_forever():
 
     while True:
         now = datetime.now(timezone.utc)
+
         for m in db.list_monitors():
-            if m.enabled and _due(m, now):
-                try:
-                    check_monitor(m.id)
-                except Exception as exc:  # noqa: BLE001 - keep scheduler alive
-                    print(f"[{m.id}] {m.name}: {exc}")
+            if not m.enabled or not _due(m, now):
+                continue
+
+            try:
+                result = check_monitor(m.id)
+
+                if result.monitor.status == "TARGET_NOT_FOUND":
+                    print(
+                        f"[{m.id}] {m.name}: "
+                        "TARGET_NOT_FOUND "
+                        f"(selector: {m.selector})"
+                    )
+
+            except Exception as exc:  # noqa: BLE001
+                print(f"[{m.id}] {m.name}: {exc}")
+
         time.sleep(poll)
